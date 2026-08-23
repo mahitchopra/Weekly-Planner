@@ -471,7 +471,7 @@ export default function TimelinePlanner() {
   const last = parseLocal(wd[6]);
   const sameMonth = first.getMonth() === last.getMonth();
   const rangeLabel = sameMonth
-    ? `${first.toLocaleDateString(undefined, { month: "long" })} ${first.getDate()} â€“ ${last.getDate()}`
+    ? `${first.toLocaleDateString(undefined, { month: "long" })} ${first.getDate()} - ${last.getDate()}`
     : `${first.toLocaleDateString(undefined, { month: "short", day: "numeric" })} â€“ ${last.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
   const relWeek = offset === 0 ? "This week" : offset === 1 ? "Next week" : offset === -1 ? "Last week" : `${offset > 0 ? "+" : ""}${offset} weeks`;
   const nowD = new Date(now);
@@ -521,7 +521,7 @@ export default function TimelinePlanner() {
         {/* Habits */}
         <div className="pl-habits">
           <div className="pl-habhead">
-            <span className="pl-hlabel">Habits Â- streaks</span>
+            <span className="pl-hlabel">Habits - streaks</span>
             {!addingHabit && (
               <button className="pl-clear" style={{ textDecoration: "none" }} onClick={() => setAddingHabit(true)}>
                 + Habit
