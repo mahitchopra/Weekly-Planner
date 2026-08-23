@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef } from "react";
+﻿import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { Check, Trash2, ChevronLeft, ChevronRight, Pencil, Flame, X, Lock } from "lucide-react";
 import { store } from "./storage.js";
 
@@ -350,7 +350,27 @@ export default function TimelinePlanner() {
     ]);
     setEditingId(id);
   };
-  const toggle = (id) => setTasks((p) => p.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  const toggle = (id) => {
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
+    const newDone = !task.done;
+    setTasks((p) => p.map((t) => (t.id === id ? { ...t, done: newDone } : t)));
+    const name = (task.title || "").trim().toLowerCase();
+    if (!name || !task.date) return;
+    if (!habits.some((h) => (h.name || "").trim().toLowerCase() === name)) return;
+    const otherStillDone = tasks.some(
+      (t) => t.id !== id && t.done && t.date === task.date && (t.title || "").trim().toLowerCase() === name
+    );
+    setHabits((hs) =>
+      hs.map((h) => {
+        if ((h.name || "").trim().toLowerCase() !== name) return h;
+        const log = { ...h.log };
+        if (newDone) log[task.date] = true;
+        else if (!otherStillDone) delete log[task.date];
+        return { ...h, log };
+      })
+    );
+  };
   const cycleColor = (id) =>
     setTasks((p) =>
       p.map((t) => {
@@ -451,8 +471,8 @@ export default function TimelinePlanner() {
   const last = parseLocal(wd[6]);
   const sameMonth = first.getMonth() === last.getMonth();
   const rangeLabel = sameMonth
-    ? `${first.toLocaleDateString(undefined, { month: "long" })} ${first.getDate()} – ${last.getDate()}`
-    : `${first.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${last.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+    ? `${first.toLocaleDateString(undefined, { month: "long" })} ${first.getDate()} â€“ ${last.getDate()}`
+    : `${first.toLocaleDateString(undefined, { month: "short", day: "numeric" })} â€“ ${last.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
   const relWeek = offset === 0 ? "This week" : offset === 1 ? "Next week" : offset === -1 ? "Last week" : `${offset > 0 ? "+" : ""}${offset} weeks`;
   const nowD = new Date(now);
   const nowMin = nowD.getHours() * 60 + nowD.getMinutes();
@@ -501,7 +521,7 @@ export default function TimelinePlanner() {
         {/* Habits */}
         <div className="pl-habits">
           <div className="pl-habhead">
-            <span className="pl-hlabel">Habits · streaks</span>
+            <span className="pl-hlabel">Habits Â· streaks</span>
             {!addingHabit && (
               <button className="pl-clear" style={{ textDecoration: "none" }} onClick={() => setAddingHabit(true)}>
                 + Habit
@@ -575,7 +595,7 @@ export default function TimelinePlanner() {
 
         {/* Timeline */}
         {loading ? (
-          <div className="pl-loading">Loading your planner…</div>
+          <div className="pl-loading">Loading your plannerâ€¦</div>
         ) : (
           <div className="pl-calscroll" ref={calRef} style={{ maxHeight: calH }}>
             <div className="pl-cal">
@@ -668,7 +688,7 @@ export default function TimelinePlanner() {
                                 className="pl-binput"
                                 data-nodrag
                                 autoFocus
-                                placeholder="Name this task…"
+                                placeholder="Name this taskâ€¦"
                                 defaultValue={t.title}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onBlur={(e) => {
@@ -691,7 +711,7 @@ export default function TimelinePlanner() {
                           </div>
                           {height > 30 && (
                             <div className="pl-btime">
-                              {fmtTime(t.start)} – {fmtTime(t.start + (t.duration || 60))}
+                              {fmtTime(t.start)} â€“ {fmtTime(t.start + (t.duration || 60))}
                             </div>
                           )}
                           <div className="pl-btools" data-nodrag onPointerDown={(e) => e.stopPropagation()}>
@@ -717,7 +737,7 @@ export default function TimelinePlanner() {
         )}
         <div className="pl-hint">Click any empty slot to add a task. Drag a block to move it; drag its bottom edge to resize. Check tasks off and each day's header fills with water.</div>
 
-        {/* Week in review — only once the week has finished */}
+        {/* Week in review â€” only once the week has finished */}
         {!loading &&
           (weekOver ? (
             <div className="pl-rev">
@@ -764,13 +784,13 @@ export default function TimelinePlanner() {
                     {bestDay && bestDay.done > 0 && (
                       <>
                         {" "}
-                        — your strongest day was <b>{parseLocal(bestDay.iso).toLocaleDateString(undefined, { weekday: "long" })}</b> with {bestDay.done} done.
+                        â€” your strongest day was <b>{parseLocal(bestDay.iso).toLocaleDateString(undefined, { weekday: "long" })}</b> with {bestDay.done} done.
                       </>
                     )}
                     {bestStreak.s > 0 && (
                       <>
                         {" "}
-                        You carried a <b>{bestStreak.s}-day</b> streak on "{bestStreak.name}". 🔥
+                        You carried a <b>{bestStreak.s}-day</b> streak on "{bestStreak.name}". ðŸ”¥
                       </>
                     )}
                   </>
@@ -783,7 +803,7 @@ export default function TimelinePlanner() {
             <div className="pl-revlock">
               <Lock size={15} />
               <span>
-                Your week in review unlocks once <b style={{ color: "var(--ink)" }}>{relWeek.toLowerCase()}</b> wraps up. Keep the days filling — come back after {parseLocal(wd[6]).toLocaleDateString(undefined, { weekday: "long" })}.
+                Your week in review unlocks once <b style={{ color: "var(--ink)" }}>{relWeek.toLowerCase()}</b> wraps up. Keep the days filling â€” come back after {parseLocal(wd[6]).toLocaleDateString(undefined, { weekday: "long" })}.
               </span>
             </div>
           ))}
@@ -791,7 +811,7 @@ export default function TimelinePlanner() {
         {!loading && (
           <div className="pl-foot">
             <span>
-              {tasks.filter((t) => !t.done).length} open · {tasks.filter((t) => t.done).length} done
+              {tasks.filter((t) => !t.done).length} open Â· {tasks.filter((t) => t.done).length} done
             </span>
             {tasks.some((t) => t.done) && (
               <button className="pl-clear" onClick={() => setTasks((p) => p.filter((t) => !t.done))}>
