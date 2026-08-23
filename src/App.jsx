@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { Check, Trash2, ChevronLeft, ChevronRight, Pencil, Flame, X, Lock } from "lucide-react";
 import { store } from "./storage.js";
 
@@ -521,7 +521,7 @@ export default function TimelinePlanner() {
         {/* Habits */}
         <div className="pl-habits">
           <div className="pl-habhead">
-            <span className="pl-hlabel">Habits Â· streaks</span>
+            <span className="pl-hlabel">Habits Â- streaks</span>
             {!addingHabit && (
               <button className="pl-clear" style={{ textDecoration: "none" }} onClick={() => setAddingHabit(true)}>
                 + Habit
@@ -811,7 +811,7 @@ export default function TimelinePlanner() {
         {!loading && (
           <div className="pl-foot">
             <span>
-              {tasks.filter((t) => !t.done).length} open Â· {tasks.filter((t) => t.done).length} done
+              {tasks.filter((t) => !t.done).length} open Â- {tasks.filter((t) => t.done).length} done
             </span>
             {tasks.some((t) => t.done) && (
               <button className="pl-clear" onClick={() => setTasks((p) => p.filter((t) => !t.done))}>
