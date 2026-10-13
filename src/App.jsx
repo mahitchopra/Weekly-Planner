@@ -33,6 +33,7 @@ const CATEGORIES = [
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || null;
 const PRIORITIES = ["low", "normal", "high"];
+const norm = (s) => (s || "").trim().toLowerCase();
 
 // wave path (periodic so a -50% shift loops seamlessly)
 const WAVE_D = (() => {
@@ -154,63 +155,35 @@ const Wave = () => (
   </>
 );
 
-function Radar({ data, max }) {
+function Radar({ data, max, accent = "var(--blue)", fill = "rgba(59,114,217,.2)", ring = "var(--line2)", label = "var(--muted)" }) {
   const n = data.length;
-  const cx = 110, cy = 100, R = 68;
+  const cx = 110, cy = 102, R = 66;
   const ang = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / n;
   const at = (i, r) => [cx + Math.cos(ang(i)) * r, cy + Math.sin(ang(i)) * r];
-  const ring = (f) => data.map((_, i) => at(i, R * f).join(",")).join(" ");
-  const poly = data.map((d, i) => at(i, (max ? d.mins / max : 0) * R).join(",")).join(" ");
+  const ringPts = (f) => data.map((_, i) => at(i, R * f).join(",")).join(" ");
+  const poly = data.map((d, i) => at(i, (max ? d.value / max : 0) * R).join(",")).join(" ");
   return (
-    <svg viewBox="0 0 220 200" width="100%" style={{ display: "block" }}>
+    <svg viewBox="0 0 220 210" width="100%" style={{ display: "block" }}>
       {[0.25, 0.5, 0.75, 1].map((f) => (
-        <polygon key={f} points={ring(f)} fill="none" stroke="var(--line2)" strokeWidth="1" />
+        <polygon key={f} points={ringPts(f)} fill="none" stroke={ring} strokeWidth="1" />
       ))}
       {data.map((d, i) => {
         const [x, y] = at(i, R);
-        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="var(--line2)" strokeWidth="1" />;
+        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke={ring} strokeWidth="1" />;
       })}
-      <polygon points={poly} fill="rgba(59,114,217,.2)" stroke="var(--blue)" strokeWidth="1.5" strokeLinejoin="round" />
+      <polygon points={poly} fill={fill} stroke={accent} strokeWidth="1.5" strokeLinejoin="round" />
       {data.map((d, i) => {
-        const [x, y] = at(i, (max ? d.mins / max : 0) * R);
-        return <circle key={i} cx={x} cy={y} r="2.6" fill={d.color} />;
+        const [x, y] = at(i, (max ? d.value / max : 0) * R);
+        return <circle key={i} cx={x} cy={y} r="2.6" fill={accent} />;
       })}
       {data.map((d, i) => {
-        const [x, y] = at(i, R + 14);
+        const [x, y] = at(i, R + 15);
         return (
-          <text key={i} x={x} y={y} fontSize="8.5" fill="var(--muted)" textAnchor="middle" dominantBaseline="middle">
+          <text key={i} x={x} y={y} fontSize="9" fill={label} textAnchor="middle" dominantBaseline="middle">
             {d.label}
           </text>
         );
       })}
-    </svg>
-  );
-}
-
-function Trend({ perDay, max, todayIso }) {
-  const W = 280, H = 96, n = perDay.length;
-  const x = (i) => (n === 1 ? W / 2 : (i * W) / (n - 1));
-  const y = (v) => H - (max ? v / max : 0) * (H - 12) - 4;
-  const line = perDay.map((d, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(d.done)}`).join(" ");
-  const area = `${line} L ${x(n - 1)} ${H} L ${x(0)} ${H} Z`;
-  return (
-    <svg viewBox={`0 0 ${W} ${H + 18}`} width="100%" style={{ display: "block" }}>
-      <defs>
-        <linearGradient id="pl-trendg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="rgba(59,114,217,.3)" />
-          <stop offset="1" stopColor="rgba(59,114,217,0)" />
-        </linearGradient>
-      </defs>
-      <path d={area} fill="url(#pl-trendg)" />
-      <path d={line} fill="none" stroke="var(--blue)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-      {perDay.map((d, i) => (
-        <circle key={i} cx={x(i)} cy={y(d.done)} r={d.iso === todayIso ? 3.4 : 2.4} fill="var(--blue)" />
-      ))}
-      {perDay.map((d, i) => (
-        <text key={i} x={x(i)} y={H + 14} fontSize="9" fill="var(--muted)" textAnchor="middle">
-          {parseLocal(d.iso).toLocaleDateString(undefined, { weekday: "narrow" })}
-        </text>
-      ))}
     </svg>
   );
 }
@@ -359,6 +332,26 @@ const STYLE = `
 .pl-leg span{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);}
 .pl-leg i{width:8px;height:8px;border-radius:2px;display:inline-block;}
 .pl-emptynote{font-size:12px;color:var(--muted);text-align:center;padding:34px 8px;line-height:1.5;}
+.pl-score{display:flex;align-items:baseline;gap:6px;}
+.pl-scorebig{font-family:'Space Grotesk',sans-serif;font-size:34px;font-weight:600;line-height:1;}
+.pl-scoreout{font-size:13px;color:var(--muted);}
+.pl-chead{display:grid;grid-template-columns:1fr 66px 46px 96px;gap:6px;font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:14px 0 2px;}
+.pl-chead span:not(:first-child){text-align:center;}
+.pl-crow{display:grid;grid-template-columns:1fr 66px 46px 96px;gap:6px;align-items:center;padding:5px 0;font-size:12.5px;border-top:1px solid var(--line);}
+.pl-cname{display:flex;align-items:center;gap:7px;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.pl-cname i{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
+.pl-ctin{display:flex;align-items:center;gap:2px;justify-content:center;font-size:11px;color:var(--muted);}
+.pl-ctin input{width:40px;font:inherit;font-size:12px;text-align:center;border:1px solid var(--line2);border-radius:5px;padding:3px 2px;background:var(--cell);color:var(--ink);}
+.pl-cdone{text-align:center;color:var(--muted);font-variant-numeric:tabular-nums;font-size:12px;}
+.pl-cscorewrap{display:flex;align-items:center;gap:6px;}
+.pl-cscore{font-weight:600;font-variant-numeric:tabular-nums;width:24px;text-align:right;font-size:12.5px;}
+.pl-cbar{flex:1;height:5px;border-radius:3px;background:var(--track);overflow:hidden;}
+.pl-cbar span{display:block;height:100%;border-radius:3px;transition:width .4s;}
+.pl-panel.balance{background:#141416;border-color:#2b2b2f;}
+.pl-panel.balance .pl-paneltitle{color:rgba(255,255,255,.55);}
+.pl-hours{display:flex;gap:10px;}
+.pl-hours label{flex:1;display:flex;flex-direction:column;gap:4px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
+.pl-hours input{font:inherit;font-size:13px;border:1px solid var(--line2);border-radius:7px;padding:6px 8px;background:var(--cell);color:var(--ink);}
 
 /* edit modal */
 .pl-overlay{position:fixed;inset:0;background:var(--overlay);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px;}
@@ -397,6 +390,8 @@ export default function TimelinePlanner() {
   const [calH, setCalH] = useState(620);
   const [theme, setTheme] = useState("light");
   const [panelId, setPanelId] = useState(null);
+  const [catMap, setCatMap] = useState({}); // normalized task name -> category id
+  const [targets, setTargets] = useState({}); // category id -> weekly target hours
 
   const hydrated = useRef(false);
   const dragRef = useRef(null);
@@ -423,6 +418,14 @@ export default function TimelinePlanner() {
         const th = await store.get("planner:theme");
         if (th?.value) setTheme(th.value);
       } catch (e) {}
+      try {
+        const cm = await store.get("planner:catmap");
+        if (cm?.value) setCatMap(JSON.parse(cm.value));
+      } catch (e) {}
+      try {
+        const tg = await store.get("planner:targets");
+        if (tg?.value) setTargets(JSON.parse(tg.value));
+      } catch (e) {}
       setLoading(false);
       hydrated.current = true;
     })();
@@ -438,6 +441,12 @@ export default function TimelinePlanner() {
   useEffect(() => {
     if (hydrated.current) store.set("planner:theme", theme).catch((e) => console.error(e));
   }, [theme]);
+  useEffect(() => {
+    if (hydrated.current) store.set("planner:catmap", JSON.stringify(catMap)).catch((e) => console.error(e));
+  }, [catMap]);
+  useEffect(() => {
+    if (hydrated.current) store.set("planner:targets", JSON.stringify(targets)).catch((e) => console.error(e));
+  }, [targets]);
 
   const measure = () => {
     const el = calRef.current;
@@ -506,6 +515,33 @@ export default function TimelinePlanner() {
   const remove = (id) => setTasks((p) => p.filter((t) => t.id !== id));
   const rename = (id, v) => setTasks((p) => p.map((t) => (t.id === id ? { ...t, title: v } : t)));
   const patch = (id, obj) => setTasks((p) => p.map((t) => (t.id === id ? { ...t, ...obj } : t)));
+  // Assign a category and propagate to every task sharing the name (and remember it for future repeats)
+  const assignCategory = (id, catId) => {
+    const t = tasks.find((x) => x.id === id);
+    if (!t) return;
+    const key = norm(t.title);
+    setTasks((p) => p.map((x) => (x.id === id || (key && norm(x.title) === key) ? { ...x, category: catId } : x)));
+    if (key) setCatMap((m) => { const n = { ...m }; if (catId) n[key] = catId; else delete n[key]; return n; });
+  };
+  // Inline naming: inherit a remembered category for repeated task names
+  const commitName = (id, v) => {
+    const name = v.trim();
+    setTasks((p) =>
+      p.map((t) => (t.id === id ? { ...t, title: name, category: t.category || catMap[norm(name)] || null } : t))
+    );
+  };
+  const setTitleCat = (id, v) =>
+    setTasks((p) => p.map((t) => (t.id === id ? { ...t, title: v, category: t.category || catMap[norm(v)] || null } : t)));
+  const setTarget = (catId, v) =>
+    setTargets((m) => { const n = { ...m }; if (v === "" || v == null) delete n[catId]; else n[catId] = Number(v); return n; });
+  const setPlannedHours = (id, h) => {
+    const t = tasks.find((x) => x.id === id);
+    if (!t) return;
+    const mins = clamp(Math.round(((Number(h) || 0) * 60) / SNAP) * SNAP, SNAP, DAY_END - t.start);
+    patch(id, { duration: mins });
+  };
+  const setActualHours = (id, h) =>
+    patch(id, { actualMin: h === "" || h == null ? null : Math.max(0, Math.round(Number(h) * 60)) });
   const rollover = () => {
     setTasks((p) => p.map((t) => (!t.done && t.date < todayIso ? { ...t, date: todayIso } : t)));
     setOffset(0);
@@ -589,12 +625,18 @@ export default function TimelinePlanner() {
   const bestStreak = habits
     .map((h) => ({ name: h.name, s: streakOf(h.log) }))
     .reduce((a, b) => (b.s > a.s ? b : a), { name: "", s: 0 });
-  const catTotals = CATEGORIES.map((c) => ({
-    ...c,
-    mins: tasks.filter((t) => wd.includes(t.date) && t.category === c.id).reduce((s, t) => s + (t.duration || 60), 0),
-  }));
-  const catMax = Math.max(1, ...catTotals.map((c) => c.mins));
-  const anyCat = catTotals.some((c) => c.mins > 0);
+  const catStats = CATEGORIES.map((c) => {
+    const inWeek = tasks.filter((t) => wd.includes(t.date) && t.category === c.id);
+    const doneMin = inWeek.reduce((s, t) => s + (t.actualMin != null ? t.actualMin : t.done ? t.duration || 60 : 0), 0);
+    const plannedMin = inWeek.reduce((s, t) => s + (t.duration || 60), 0);
+    const target = Number(targets[c.id]) || 0;
+    const doneH = doneMin / 60;
+    const plannedH = plannedMin / 60;
+    const score = target > 0 ? Math.min(10, (doneH / target) * 10) : null;
+    return { ...c, target, doneH, plannedH, score };
+  });
+  const scored = catStats.filter((c) => c.score != null);
+  const overall = scored.length ? scored.reduce((s, c) => s + c.score, 0) / scored.length : null;
   const panelTask = panelId ? tasks.find((t) => t.id === panelId) : null;
 
   const weekOver = parseLocal(wd[6]) < parseLocal(todayIso);
@@ -833,7 +875,7 @@ export default function TimelinePlanner() {
                                 onBlur={(e) => {
                                   const v = e.target.value.trim();
                                   if (!v && !t.title) remove(t.id);
-                                  else if (v) rename(t.id, v);
+                                  else if (v) commitName(t.id, v);
                                   setEditingId(null);
                                 }}
                                 onKeyDown={(e) => {
@@ -877,26 +919,59 @@ export default function TimelinePlanner() {
         {!loading && (
           <div className="pl-dash">
             <div className="pl-panel">
-              <div className="pl-paneltitle">Productivity {"\u00B7"} {relWeek.toLowerCase()}</div>
-              <Trend perDay={perDay} max={maxDone} todayIso={todayIso} />
+              <div className="pl-paneltitle">Weekly score {"\u00B7"} {relWeek.toLowerCase()}</div>
+              <div className="pl-score">
+                <span className="pl-scorebig">{overall != null ? overall.toFixed(1) : "--"}</span>
+                <span className="pl-scoreout">/ 10</span>
+              </div>
+              <div className="pl-chead">
+                <span>Life area</span>
+                <span>Target</span>
+                <span>Done</span>
+                <span>Score</span>
+              </div>
+              {catStats.map((c) => (
+                <div key={c.id} className="pl-crow">
+                  <span className="pl-cname">
+                    <i style={{ background: c.color }} />
+                    {c.label}
+                  </span>
+                  <span className="pl-ctin">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={targets[c.id] ?? ""}
+                      placeholder="--"
+                      onChange={(e) => setTarget(c.id, e.target.value)}
+                    />
+                    h
+                  </span>
+                  <span className="pl-cdone">{c.doneH.toFixed(1)}h</span>
+                  <span className="pl-cscorewrap">
+                    <span className="pl-cscore">{c.score != null ? c.score.toFixed(1) : "--"}</span>
+                    <span className="pl-cbar">
+                      <span style={{ width: `${(c.score || 0) * 10}%`, background: c.color }} />
+                    </span>
+                  </span>
+                </div>
+              ))}
             </div>
-            <div className="pl-panel">
-              <div className="pl-paneltitle">Life balance</div>
-              {anyCat ? (
-                <>
-                  <Radar data={catTotals} max={catMax} />
-                  <div className="pl-leg">
-                    {catTotals
-                      .filter((c) => c.mins > 0)
-                      .map((c) => (
-                        <span key={c.id}>
-                          <i style={{ background: c.color }} /> {c.label} {(c.mins / 60).toFixed(c.mins % 60 ? 1 : 0)}h
-                        </span>
-                      ))}
-                  </div>
-                </>
+            <div className="pl-panel balance">
+              <div className="pl-paneltitle">Life balance {"\u00B7"} out of 10</div>
+              {scored.length ? (
+                <Radar
+                  data={catStats.map((c) => ({ label: c.label, value: c.score || 0 }))}
+                  max={10}
+                  accent="#F0473A"
+                  fill="rgba(240,71,58,.32)"
+                  ring="rgba(255,255,255,.16)"
+                  label="rgba(255,255,255,.82)"
+                />
               ) : (
-                <div className="pl-emptynote">Give tasks a category (via the pencil) to see how your week is balanced across life areas.</div>
+                <div className="pl-emptynote" style={{ color: "rgba(255,255,255,.55)" }}>
+                  Set a weekly hour target on the left and give some tasks a category to light up your balance.
+                </div>
               )}
             </div>
           </div>
@@ -981,7 +1056,7 @@ export default function TimelinePlanner() {
                 autoFocus
                 placeholder="Task name"
                 value={panelTask.title}
-                onChange={(e) => patch(panelTask.id, { title: e.target.value })}
+                onChange={(e) => setTitleCat(panelTask.id, e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") setPanelId(null);
                 }}
@@ -989,14 +1064,14 @@ export default function TimelinePlanner() {
 
               <div className="pl-modlbl">Category</div>
               <div className="pl-chips">
-                <button className={`pl-chip${!panelTask.category ? " on" : ""}`} onClick={() => patch(panelTask.id, { category: null })}>
+                <button className={`pl-chip${!panelTask.category ? " on" : ""}`} onClick={() => assignCategory(panelTask.id, null)}>
                   None
                 </button>
                 {CATEGORIES.map((c) => (
                   <button
                     key={c.id}
                     className={`pl-chip${panelTask.category === c.id ? " on" : ""}`}
-                    onClick={() => patch(panelTask.id, { category: c.id })}
+                    onClick={() => assignCategory(panelTask.id, c.id)}
                   >
                     <i style={{ background: c.color }} /> {c.label}
                   </button>
@@ -1027,6 +1102,31 @@ export default function TimelinePlanner() {
                     aria-label={p.name}
                   />
                 ))}
+              </div>
+
+              <div className="pl-modlbl">Hours</div>
+              <div className="pl-hours">
+                <label>
+                  Planned
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.25"
+                    value={(panelTask.duration || 60) / 60}
+                    onChange={(e) => setPlannedHours(panelTask.id, e.target.value)}
+                  />
+                </label>
+                <label>
+                  Actual
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.25"
+                    placeholder="--"
+                    value={panelTask.actualMin != null ? panelTask.actualMin / 60 : ""}
+                    onChange={(e) => setActualHours(panelTask.id, e.target.value)}
+                  />
+                </label>
               </div>
 
               <div className="pl-modfoot">
