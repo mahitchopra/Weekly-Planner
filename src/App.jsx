@@ -370,6 +370,20 @@ const STYLE = `
 .pl-sw{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;}
 .pl-modfoot{display:flex;justify-content:space-between;align-items:center;margin-top:18px;}
 .pl-delm{font:inherit;font-size:12.5px;color:#E8563F;background:none;border:none;cursor:pointer;}
+.pl-modal.wide{width:420px;}
+.pl-rollhead{display:flex;align-items:baseline;gap:8px;}
+.pl-rollacts{display:flex;gap:14px;margin:4px 0 4px;}
+.pl-rolllist{max-height:46vh;overflow:auto;margin:4px -4px 0;padding:0 4px;}
+.pl-rollrow{display:flex;align-items:center;gap:9px;padding:7px 2px;border-top:1px solid var(--line);}
+.pl-rollrow:first-child{border-top:none;}
+.pl-rcb{width:18px;height:18px;border:1.5px solid var(--line2);border-radius:5px;background:var(--cell);display:grid;place-items:center;cursor:pointer;color:#fff;flex:0 0 auto;padding:0;}
+.pl-rcb.on{background:var(--blue);border-color:var(--blue);}
+.pl-rdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
+.pl-rtitle{flex:1;min-width:0;font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.pl-rold{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:#E8563F;border:1px solid #E8563F;border-radius:10px;padding:1px 6px;flex:0 0 auto;}
+.pl-rdate{font-size:11px;color:var(--muted);white-space:nowrap;flex:0 0 auto;font-variant-numeric:tabular-nums;}
+.pl-rdel{width:22px;height:22px;display:grid;place-items:center;border:none;background:none;color:var(--muted);cursor:pointer;flex:0 0 auto;padding:0;}
+.pl-rdel:hover{color:#E8563F;}
 
 @media (max-width:720px){.pl-dash{grid-template-columns:1fr;}}
 @media (max-width:560px){.pl-stats{grid-template-columns:repeat(2,1fr);}}
@@ -392,6 +406,8 @@ export default function TimelinePlanner() {
   const [panelId, setPanelId] = useState(null);
   const [catMap, setCatMap] = useState({}); // normalized task name -> category id
   const [targets, setTargets] = useState({}); // category id -> weekly target hours
+  const [rollOpen, setRollOpen] = useState(false);
+  const [rollSel, setRollSel] = useState(() => new Set());
 
   const hydrated = useRef(false);
   const dragRef = useRef(null);
@@ -542,10 +558,24 @@ export default function TimelinePlanner() {
   };
   const setActualHours = (id, h) =>
     patch(id, { actualMin: h === "" || h == null ? null : Math.max(0, Math.round(Number(h) * 60)) });
-  const rollover = () => {
-    setTasks((p) => p.map((t) => (!t.done && t.date < todayIso ? { ...t, date: todayIso } : t)));
+  const recentCutoff = addDays(todayIso, -14); // only the last 2 weeks are rolled by default
+  const openRollover = () => {
+    const recentIds = tasks.filter((t) => !t.done && t.date < todayIso && t.date >= recentCutoff).map((t) => t.id);
+    setRollSel(new Set(recentIds));
+    setRollOpen(true);
+  };
+  const toggleRoll = (id) =>
+    setRollSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const deleteFromRoll = (id) => {
+    remove(id);
+    setRollSel((s) => { const n = new Set(s); n.delete(id); return n; });
+  };
+  const doRollover = () => {
+    setTasks((p) => p.map((t) => (rollSel.has(t.id) ? { ...t, date: todayIso } : t)));
+    setRollOpen(false);
     setOffset(0);
   };
+  const deleteOlder = () => setTasks((p) => p.filter((t) => !(!t.done && t.date < recentCutoff)));
   const pending = tasks.filter((t) => !t.done && t.date < todayIso).length;
 
   const onPointerDown = (e, task) => {
@@ -638,6 +668,10 @@ export default function TimelinePlanner() {
   const scored = catStats.filter((c) => c.score != null);
   const overall = scored.length ? scored.reduce((s, c) => s + c.score, 0) / scored.length : null;
   const panelTask = panelId ? tasks.find((t) => t.id === panelId) : null;
+  const rollCands = tasks
+    .filter((t) => !t.done && t.date < todayIso)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.start - b.start));
+  const olderCount = rollCands.filter((t) => t.date < recentCutoff).length;
 
   const weekOver = parseLocal(wd[6]) < parseLocal(todayIso);
 
@@ -681,7 +715,7 @@ export default function TimelinePlanner() {
 
         <div className="pl-tools">
           {pending > 0 && (
-            <button className="pl-btn roll" onClick={rollover}>
+            <button className="pl-btn roll" onClick={openRollover}>
               <ChevronRight size={14} /> Roll over {pending} pending
             </button>
           )}
@@ -1136,6 +1170,68 @@ export default function TimelinePlanner() {
                 <button className="pl-btn mini" onClick={() => setPanelId(null)}>
                   Done
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {rollOpen && (
+          <div className="pl-overlay" onClick={() => setRollOpen(false)}>
+            <div className="pl-modal wide" onClick={(e) => e.stopPropagation()}>
+              <div className="pl-rollhead">
+                <span className="pl-revtitle">Roll over unfinished</span>
+                <span className="pl-revsub">to {parseLocal(todayIso).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+              </div>
+              <div className="pl-modlbl" style={{ marginTop: 8 }}>
+                Last 2 weeks are checked by default{olderCount > 0 ? ` \u00B7 ${olderCount} older left unchecked` : ""}
+              </div>
+              <div className="pl-rollacts">
+                <button className="pl-clear" style={{ textDecoration: "none" }} onClick={() => setRollSel(new Set(rollCands.map((t) => t.id)))}>
+                  Select all
+                </button>
+                <button className="pl-clear" style={{ textDecoration: "none" }} onClick={() => setRollSel(new Set())}>
+                  Clear
+                </button>
+              </div>
+              <div className="pl-rolllist">
+                {rollCands.length === 0 && <div className="pl-emptynote">Nothing to roll over {"\u2014"} you're all caught up.</div>}
+                {rollCands.map((t) => {
+                  const col = colorOf(t.color);
+                  const n = Math.round((parseLocal(todayIso) - parseLocal(t.date)) / 86400000);
+                  const older = t.date < recentCutoff;
+                  const sel = rollSel.has(t.id);
+                  return (
+                    <div key={t.id} className="pl-rollrow">
+                      <button className={`pl-rcb${sel ? " on" : ""}`} onClick={() => toggleRoll(t.id)} aria-label="Toggle rollover">
+                        {sel && <Check size={12} strokeWidth={3} />}
+                      </button>
+                      <span className="pl-rdot" style={{ background: col.bar }} />
+                      <span className="pl-rtitle">{t.title || "Untitled"}</span>
+                      {older && <span className="pl-rold">2+ wks</span>}
+                      <span className="pl-rdate">{n}d ago</span>
+                      <button className="pl-rdel" onClick={() => deleteFromRoll(t.id)} aria-label="Delete task">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="pl-modfoot">
+                {olderCount > 0 ? (
+                  <button className="pl-delm" onClick={deleteOlder}>
+                    Delete {olderCount} older than 2 weeks
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <button className="pl-clear" onClick={() => setRollOpen(false)}>
+                    Cancel
+                  </button>
+                  <button className="pl-btn mini" onClick={doRollover}>
+                    Roll over {rollSel.size}
+                  </button>
+                </span>
               </div>
             </div>
           </div>
