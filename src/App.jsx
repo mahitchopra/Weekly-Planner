@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from "react";
-import { Check, Trash2, ChevronLeft, ChevronRight, Pencil, Flame, X, Lock } from "lucide-react";
+import { Check, Trash2, ChevronLeft, ChevronRight, Pencil, Flame, X, Lock, Moon, Sun } from "lucide-react";
 import { store } from "./storage.js";
 
 // ---------- constants ----------
@@ -21,6 +21,18 @@ const PALETTE = [
   { name: "slate", bar: "#5B6472", tint: "#E8EAED", ink: "#333A45" },
 ];
 const colorOf = (n) => PALETTE.find((p) => p.name === n) || PALETTE[4];
+
+// life-area categories (drive the balance radar)
+const CATEGORIES = [
+  { id: "academic", label: "Academic", color: "#3B72D9" },
+  { id: "work", label: "Work", color: "#8257D9" },
+  { id: "health", label: "Health", color: "#3F9D57" },
+  { id: "personal", label: "Personal", color: "#DD8B29" },
+  { id: "social", label: "Social", color: "#D9509A" },
+  { id: "chores", label: "Chores", color: "#5B6472" },
+];
+const catOf = (id) => CATEGORIES.find((c) => c.id === id) || null;
+const PRIORITIES = ["low", "normal", "high"];
 
 // wave path (periodic so a -50% shift loops seamlessly)
 const WAVE_D = (() => {
@@ -142,16 +154,83 @@ const Wave = () => (
   </>
 );
 
+function Radar({ data, max }) {
+  const n = data.length;
+  const cx = 110, cy = 100, R = 68;
+  const ang = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / n;
+  const at = (i, r) => [cx + Math.cos(ang(i)) * r, cy + Math.sin(ang(i)) * r];
+  const ring = (f) => data.map((_, i) => at(i, R * f).join(",")).join(" ");
+  const poly = data.map((d, i) => at(i, (max ? d.mins / max : 0) * R).join(",")).join(" ");
+  return (
+    <svg viewBox="0 0 220 200" width="100%" style={{ display: "block" }}>
+      {[0.25, 0.5, 0.75, 1].map((f) => (
+        <polygon key={f} points={ring(f)} fill="none" stroke="var(--line2)" strokeWidth="1" />
+      ))}
+      {data.map((d, i) => {
+        const [x, y] = at(i, R);
+        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="var(--line2)" strokeWidth="1" />;
+      })}
+      <polygon points={poly} fill="rgba(59,114,217,.2)" stroke="var(--blue)" strokeWidth="1.5" strokeLinejoin="round" />
+      {data.map((d, i) => {
+        const [x, y] = at(i, (max ? d.mins / max : 0) * R);
+        return <circle key={i} cx={x} cy={y} r="2.6" fill={d.color} />;
+      })}
+      {data.map((d, i) => {
+        const [x, y] = at(i, R + 14);
+        return (
+          <text key={i} x={x} y={y} fontSize="8.5" fill="var(--muted)" textAnchor="middle" dominantBaseline="middle">
+            {d.label}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
+
+function Trend({ perDay, max, todayIso }) {
+  const W = 280, H = 96, n = perDay.length;
+  const x = (i) => (n === 1 ? W / 2 : (i * W) / (n - 1));
+  const y = (v) => H - (max ? v / max : 0) * (H - 12) - 4;
+  const line = perDay.map((d, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(d.done)}`).join(" ");
+  const area = `${line} L ${x(n - 1)} ${H} L ${x(0)} ${H} Z`;
+  return (
+    <svg viewBox={`0 0 ${W} ${H + 18}`} width="100%" style={{ display: "block" }}>
+      <defs>
+        <linearGradient id="pl-trendg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="rgba(59,114,217,.3)" />
+          <stop offset="1" stopColor="rgba(59,114,217,0)" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill="url(#pl-trendg)" />
+      <path d={line} fill="none" stroke="var(--blue)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      {perDay.map((d, i) => (
+        <circle key={i} cx={x(i)} cy={y(d.done)} r={d.iso === todayIso ? 3.4 : 2.4} fill="var(--blue)" />
+      ))}
+      {perDay.map((d, i) => (
+        <text key={i} x={x(i)} y={H + 14} fontSize="9" fill="var(--muted)" textAnchor="middle">
+          {parseLocal(d.iso).toLocaleDateString(undefined, { weekday: "narrow" })}
+        </text>
+      ))}
+    </svg>
+  );
+}
+
 const FONTS =
   "@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');";
 
 const STYLE = `
 .pl-root{--paper:#F6F5F0;--ink:#1A1C22;--muted:#767A83;--line:#E7E7DE;--line2:#DBDBD0;
   --blue:#3B72D9;--blue-deep:#2A56B0;--card:#FCFCF8;
+  --grid:#EDEDE5;--track:#E6E6DC;--cell:#ffffff;--today-col:#FBFCFF;--today-head:#EEF3FE;
+  --tool-bg:rgba(255,255,255,.82);--tool-ic:#555;--panel:#ffffff;--overlay:rgba(18,20,26,.4);
   font-family:'Inter',ui-sans-serif,system-ui,sans-serif;color:var(--ink);min-height:100vh;
   background-color:var(--paper);
   background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
   background-size:26px 26px;padding:22px 14px 60px;-webkit-font-smoothing:antialiased;}
+.pl-root.dark{--paper:#13151A;--ink:#E6E8EC;--muted:#8A909B;--line:#262A31;--line2:#333942;
+  --blue:#5B8DEF;--blue-deep:#3B6FD6;--card:#1B1E25;
+  --grid:#23262E;--track:#2A2E36;--cell:#20242B;--today-col:#1A2230;--today-head:#1C2740;
+  --tool-bg:rgba(44,48,57,.9);--tool-ic:#C7CBD2;--panel:#20242C;--overlay:rgba(0,0,0,.6);}
 .pl-wrap{max-width:1160px;margin:0 auto;}
 .pl-top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:2px 2px 12px;}
 .pl-eyebrow{font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.26em;font-size:10.5px;font-weight:600;color:var(--muted);}
@@ -165,7 +244,7 @@ const STYLE = `
 .pl-btn{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:13px;font-weight:600;border-radius:7px;padding:7px 12px;cursor:pointer;border:1px solid var(--line2);background:var(--card);color:var(--ink);}
 .pl-btn.roll{border-color:#E0912F;color:#89540E;background:#F9EDD8;}
 .pl-prog{flex:1;min-width:150px;display:flex;align-items:center;gap:9px;}
-.pl-progbar{flex:1;height:5px;border-radius:3px;background:#E6E6DC;overflow:hidden;}
+.pl-progbar{flex:1;height:5px;border-radius:3px;background:var(--track);overflow:hidden;}
 .pl-progfill{height:100%;background:linear-gradient(90deg,#3F9D57,#22A29C);transition:width .3s;}
 .pl-progtxt{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;}
 
@@ -178,15 +257,15 @@ const STYLE = `
 .pl-hname{display:flex;align-items:center;gap:7px;font-size:13px;min-width:0;}
 .pl-hname .swatch{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
 .pl-hname .htext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.pl-hx{opacity:0;border:none;background:none;cursor:pointer;color:#BDBEB4;padding:0;display:grid;place-items:center;}
+.pl-hx{opacity:0;border:none;background:none;cursor:pointer;color:var(--muted);padding:0;display:grid;place-items:center;}
 .pl-habrow:hover .pl-hx{opacity:1;}
 .pl-hx:hover{color:#E8563F;}
-.pl-hcell{height:24px;border-radius:6px;border:1px solid var(--line2);background:#fff;cursor:pointer;display:grid;place-items:center;color:#fff;}
+.pl-hcell{height:24px;border-radius:6px;border:1px solid var(--line2);background:var(--cell);cursor:pointer;display:grid;place-items:center;color:#fff;}
 .pl-hcell.today{box-shadow:inset 0 0 0 1.5px rgba(59,114,217,.5);}
 .pl-hstreak{display:flex;align-items:center;gap:3px;justify-content:flex-end;font-size:12px;font-weight:600;color:#89540E;font-variant-numeric:tabular-nums;}
 .pl-hstreak.zero{color:var(--line2);}
 .pl-addhabit{display:flex;gap:6px;margin-top:6px;}
-.pl-addhabit input{flex:1;font:inherit;font-size:13px;border:1px solid var(--blue);border-radius:6px;padding:6px 8px;}
+.pl-addhabit input{flex:1;font:inherit;font-size:13px;border:1px solid var(--blue);border-radius:6px;padding:6px 8px;background:var(--cell);color:var(--ink);}
 .pl-btn.mini{background:var(--blue);color:#fff;border-color:var(--blue);}
 
 .pl-calscroll{overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--card);}
@@ -196,7 +275,7 @@ const STYLE = `
 .pl-head-cell.gutter{border-right:1px solid var(--line);}
 .pl-dow{position:relative;z-index:2;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
 .pl-dnum{position:relative;z-index:2;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;}
-.pl-head-cell.istoday{background:#EEF3FE;}
+.pl-head-cell.istoday{background:var(--today-head);}
 .pl-head-cell.istoday .pl-dow,.pl-head-cell.istoday .pl-dnum{color:var(--blue-deep);}
 .pl-gutter{position:relative;border-right:1px solid var(--line);}
 .pl-hourlabel{position:absolute;right:6px;font-size:10px;color:var(--muted);transform:translateY(-6px);}
@@ -227,7 +306,7 @@ const STYLE = `
 .pl-block.dragging{z-index:20;box-shadow:0 6px 16px rgba(0,0,0,.18);opacity:.96;}
 .pl-block.done{opacity:.6;}
 .pl-brow{display:flex;align-items:center;gap:4px;}
-.pl-bcheck{width:14px;height:14px;border-radius:50%;border:1.4px solid;background:#fff;display:grid;place-items:center;cursor:pointer;flex:0 0 auto;padding:0;}
+.pl-bcheck{width:14px;height:14px;border-radius:50%;border:1.4px solid;background:var(--cell);display:grid;place-items:center;cursor:pointer;flex:0 0 auto;padding:0;}
 .pl-block.done .pl-bcheck{background:currentColor;}
 .pl-btitle{font-size:11.5px;font-weight:600;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;}
 .pl-block.done .pl-btitle{text-decoration:line-through;}
@@ -237,8 +316,8 @@ const STYLE = `
 .pl-binput::placeholder{color:currentColor;opacity:.5;}
 .pl-btools{position:absolute;top:2px;right:3px;display:flex;gap:2px;opacity:0;transition:opacity .1s;}
 .pl-block:hover .pl-btools{opacity:1;}
-.pl-btools button{width:16px;height:16px;display:grid;place-items:center;border:none;background:rgba(255,255,255,.8);border-radius:4px;cursor:pointer;color:#555;padding:0;}
-.pl-btools button:hover{color:#111;}
+.pl-btools button{width:16px;height:16px;display:grid;place-items:center;border:none;background:var(--tool-bg);border-radius:4px;cursor:pointer;color:var(--tool-ic);padding:0;}
+.pl-btools button:hover{color:var(--ink);}
 .pl-resize{position:absolute;left:0;right:0;bottom:0;height:8px;cursor:ns-resize;touch-action:none;}
 .pl-resize::after{content:"";position:absolute;left:50%;bottom:2px;width:18px;height:2px;border-radius:2px;background:rgba(0,0,0,.18);transform:translateX(-50%);}
 
@@ -267,6 +346,39 @@ const STYLE = `
 .pl-clear:hover{color:#E8563F;}
 .pl-loading{padding:60px;text-align:center;color:var(--muted);}
 :focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
+/* priorities + category marker */
+.pl-block.pri-high{box-shadow:0 2px 7px rgba(0,0,0,.18);}
+.pl-block.pri-low{box-shadow:none;}
+.pl-bcat{position:absolute;bottom:3px;right:5px;width:7px;height:7px;border-radius:50%;pointer-events:none;box-shadow:0 0 0 1.5px var(--card);}
+
+/* dashboard */
+.pl-dash{display:grid;grid-template-columns:1.3fr 1fr;gap:12px;margin:16px 2px 0;}
+.pl-panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
+.pl-paneltitle{font-family:'Space Grotesk',sans-serif;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin-bottom:10px;}
+.pl-leg{display:flex;flex-wrap:wrap;gap:7px 12px;margin-top:8px;justify-content:center;}
+.pl-leg span{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);}
+.pl-leg i{width:8px;height:8px;border-radius:2px;display:inline-block;}
+.pl-emptynote{font-size:12px;color:var(--muted);text-align:center;padding:34px 8px;line-height:1.5;}
+
+/* edit modal */
+.pl-overlay{position:fixed;inset:0;background:var(--overlay);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px;}
+.pl-modal{width:320px;max-width:100%;background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:16px 16px 14px;box-shadow:0 16px 48px rgba(0,0,0,.35);}
+.pl-modtitle{width:100%;font:inherit;font-size:15px;font-weight:600;border:none;border-bottom:1.5px solid var(--line2);background:transparent;color:var(--ink);padding:3px 0 7px;}
+.pl-modtitle:focus{outline:none;border-color:var(--blue);}
+.pl-modlbl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:15px 0 7px;font-weight:600;}
+.pl-chips{display:flex;flex-wrap:wrap;gap:6px;}
+.pl-chip{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12px;border:1px solid var(--line2);background:transparent;color:var(--ink);border-radius:20px;padding:4px 10px;cursor:pointer;}
+.pl-chip.on{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 15%,transparent);}
+.pl-chip i{width:8px;height:8px;border-radius:50%;display:inline-block;}
+.pl-prio{display:flex;gap:6px;}
+.pl-prio button{flex:1;font:inherit;font-size:12px;border:1px solid var(--line2);background:transparent;color:var(--ink);border-radius:7px;padding:7px 6px;cursor:pointer;text-transform:capitalize;}
+.pl-prio button.on{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 15%,transparent);font-weight:600;}
+.pl-sws{display:flex;gap:8px;flex-wrap:wrap;}
+.pl-sw{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;}
+.pl-modfoot{display:flex;justify-content:space-between;align-items:center;margin-top:18px;}
+.pl-delm{font:inherit;font-size:12.5px;color:#E8563F;background:none;border:none;cursor:pointer;}
+
+@media (max-width:720px){.pl-dash{grid-template-columns:1fr;}}
 @media (max-width:560px){.pl-stats{grid-template-columns:repeat(2,1fr);}}
 @media (prefers-reduced-motion:reduce){.pl-wave,.pl-liquid{animation:none!important;}.pl-liquid{transition:none!important;}*{transition:none!important;}}
 `;
@@ -283,6 +395,8 @@ export default function TimelinePlanner() {
   const [habitDraft, setHabitDraft] = useState("");
   const [hourH, setHourH] = useState(46);
   const [calH, setCalH] = useState(620);
+  const [theme, setTheme] = useState("light");
+  const [panelId, setPanelId] = useState(null);
 
   const hydrated = useRef(false);
   const dragRef = useRef(null);
@@ -305,6 +419,10 @@ export default function TimelinePlanner() {
         const h = await store.get("planner:habits");
         if (h?.value) setHabits(JSON.parse(h.value));
       } catch (e) {}
+      try {
+        const th = await store.get("planner:theme");
+        if (th?.value) setTheme(th.value);
+      } catch (e) {}
       setLoading(false);
       hydrated.current = true;
     })();
@@ -317,6 +435,9 @@ export default function TimelinePlanner() {
   useEffect(() => {
     if (hydrated.current) store.set("planner:habits", JSON.stringify(habits)).catch((e) => console.error(e));
   }, [habits]);
+  useEffect(() => {
+    if (hydrated.current) store.set("planner:theme", theme).catch((e) => console.error(e));
+  }, [theme]);
 
   const measure = () => {
     const el = calRef.current;
@@ -346,7 +467,7 @@ export default function TimelinePlanner() {
     const id = uid();
     setTasks((p) => [
       ...p,
-      { id, title: "", date: iso, start, duration, color: PALETTE[p.length % PALETTE.length].name, done: false, createdAt: Date.now() },
+      { id, title: "", date: iso, start, duration, color: PALETTE[p.length % PALETTE.length].name, category: null, priority: "normal", done: false, createdAt: Date.now() },
     ]);
     setEditingId(id);
   };
@@ -384,6 +505,7 @@ export default function TimelinePlanner() {
     );
   const remove = (id) => setTasks((p) => p.filter((t) => t.id !== id));
   const rename = (id, v) => setTasks((p) => p.map((t) => (t.id === id ? { ...t, title: v } : t)));
+  const patch = (id, obj) => setTasks((p) => p.map((t) => (t.id === id ? { ...t, ...obj } : t)));
   const rollover = () => {
     setTasks((p) => p.map((t) => (!t.done && t.date < todayIso ? { ...t, date: todayIso } : t)));
     setOffset(0);
@@ -467,6 +589,13 @@ export default function TimelinePlanner() {
   const bestStreak = habits
     .map((h) => ({ name: h.name, s: streakOf(h.log) }))
     .reduce((a, b) => (b.s > a.s ? b : a), { name: "", s: 0 });
+  const catTotals = CATEGORIES.map((c) => ({
+    ...c,
+    mins: tasks.filter((t) => wd.includes(t.date) && t.category === c.id).reduce((s, t) => s + (t.duration || 60), 0),
+  }));
+  const catMax = Math.max(1, ...catTotals.map((c) => c.mins));
+  const anyCat = catTotals.some((c) => c.mins > 0);
+  const panelTask = panelId ? tasks.find((t) => t.id === panelId) : null;
 
   const weekOver = parseLocal(wd[6]) < parseLocal(todayIso);
 
@@ -483,7 +612,7 @@ export default function TimelinePlanner() {
   for (let h = DAY_START / 60; h <= DAY_END / 60; h++) hours.push(h);
 
   return (
-    <div className="pl-root">
+    <div className={`pl-root${theme === "dark" ? " dark" : ""}`}>
       <style>{FONTS}</style>
       <style>{STYLE}</style>
       <div className="pl-wrap">
@@ -493,6 +622,9 @@ export default function TimelinePlanner() {
             <h1 className="pl-h1">{rangeLabel}</h1>
           </div>
           <div className="pl-nav">
+            <button className="pl-navbtn" onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))} aria-label="Toggle dark mode" title="Toggle dark mode">
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
             <button className="pl-navbtn" onClick={() => setOffset((o) => o - 1)} aria-label="Previous week">
               <ChevronLeft size={18} />
             </button>
@@ -641,8 +773,8 @@ export default function TimelinePlanner() {
                     ref={(el) => (colRefs.current[iso] = el)}
                     style={{
                       height: TOTAL_H,
-                      backgroundColor: isToday ? "#FBFCFF" : undefined,
-                      backgroundImage: `repeating-linear-gradient(#EDEDE5 0, #EDEDE5 1px, transparent 1px, transparent ${hourH}px)`,
+                      backgroundColor: isToday ? "var(--today-col)" : undefined,
+                      backgroundImage: `repeating-linear-gradient(var(--grid) 0, var(--grid) 1px, transparent 1px, transparent ${hourH}px)`,
                     }}
                     onClick={(e) => {
                       if (e.target === e.currentTarget) createAt(iso, e.clientY);
@@ -658,10 +790,13 @@ export default function TimelinePlanner() {
                       const isDragging = drag && drag.id === t.id;
                       const top = (t.start - DAY_START) * PX;
                       const height = Math.max((t.duration || 60) * PX, 20);
+                      const prio = t.priority || "normal";
+                      const cat = t.category ? catOf(t.category) : null;
+                      const bdark = theme === "dark";
                       return (
                         <div
                           key={t.id}
-                          className={`pl-block${t.done ? " done" : ""}${isDragging ? " dragging" : ""}`}
+                          className={`pl-block${t.done ? " done" : ""}${isDragging ? " dragging" : ""} pri-${prio}`}
                           onPointerDown={(e) => onPointerDown(e, t)}
                           onPointerMove={onPointerMove}
                           onPointerUp={onPointerUp}
@@ -671,8 +806,9 @@ export default function TimelinePlanner() {
                             left: `calc(${lg.col * w}% + 2px)`,
                             width: `calc(${w}% - 4px)`,
                             borderLeftColor: col.bar,
-                            background: t.done ? "#F3F3EE" : col.tint,
-                            color: col.ink,
+                            borderLeftWidth: prio === "high" ? 6 : prio === "low" ? 2 : 3,
+                            background: t.done ? "var(--cell)" : bdark ? "rgba(255,255,255,.07)" : col.tint,
+                            color: t.done ? "var(--muted)" : bdark ? col.bar : col.ink,
                           }}
                         >
                           <div className="pl-brow">
@@ -718,16 +854,14 @@ export default function TimelinePlanner() {
                             </div>
                           )}
                           <div className="pl-btools" data-nodrag onPointerDown={(e) => e.stopPropagation()}>
-                            <button onClick={() => cycleColor(t.id)} aria-label="Color" title="Change color">
-                              <span style={{ width: 9, height: 9, borderRadius: "50%", background: col.bar, display: "block" }} />
-                            </button>
-                            <button onClick={() => setEditingId(t.id)} aria-label="Rename">
+                            <button onClick={() => setPanelId(t.id)} aria-label="Edit task" title="Edit (category, priority, color)">
                               <Pencil size={11} />
                             </button>
                             <button onClick={() => remove(t.id)} aria-label="Delete">
                               <Trash2 size={11} />
                             </button>
                           </div>
+                          {cat && <span className="pl-bcat" style={{ background: cat.color }} title={cat.label} />}
                           <div className="pl-resize" data-resize aria-label="Resize" />
                         </div>
                       );
@@ -738,7 +872,35 @@ export default function TimelinePlanner() {
             </div>
           </div>
         )}
-        <div className="pl-hint">Click any empty slot to add a task. Drag a block to move it; drag its bottom edge to resize. Check tasks off and each day's header fills with water.</div>
+        <div className="pl-hint">Click any empty slot to add a task. Drag a block to move it; drag its bottom edge to resize. Open the pencil on a task to set its category, priority and color.</div>
+
+        {!loading && (
+          <div className="pl-dash">
+            <div className="pl-panel">
+              <div className="pl-paneltitle">Productivity {"\u00B7"} {relWeek.toLowerCase()}</div>
+              <Trend perDay={perDay} max={maxDone} todayIso={todayIso} />
+            </div>
+            <div className="pl-panel">
+              <div className="pl-paneltitle">Life balance</div>
+              {anyCat ? (
+                <>
+                  <Radar data={catTotals} max={catMax} />
+                  <div className="pl-leg">
+                    {catTotals
+                      .filter((c) => c.mins > 0)
+                      .map((c) => (
+                        <span key={c.id}>
+                          <i style={{ background: c.color }} /> {c.label} {(c.mins / 60).toFixed(c.mins % 60 ? 1 : 0)}h
+                        </span>
+                      ))}
+                  </div>
+                </>
+              ) : (
+                <div className="pl-emptynote">Give tasks a category (via the pencil) to see how your week is balanced across life areas.</div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Week in review - only once the week has finished */}
         {!loading &&
@@ -810,6 +972,74 @@ export default function TimelinePlanner() {
               </span>
             </div>
           ))}
+
+        {panelTask && (
+          <div className="pl-overlay" onClick={() => setPanelId(null)}>
+            <div className="pl-modal" onClick={(e) => e.stopPropagation()}>
+              <input
+                className="pl-modtitle"
+                autoFocus
+                placeholder="Task name"
+                value={panelTask.title}
+                onChange={(e) => patch(panelTask.id, { title: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") setPanelId(null);
+                }}
+              />
+
+              <div className="pl-modlbl">Category</div>
+              <div className="pl-chips">
+                <button className={`pl-chip${!panelTask.category ? " on" : ""}`} onClick={() => patch(panelTask.id, { category: null })}>
+                  None
+                </button>
+                {CATEGORIES.map((c) => (
+                  <button
+                    key={c.id}
+                    className={`pl-chip${panelTask.category === c.id ? " on" : ""}`}
+                    onClick={() => patch(panelTask.id, { category: c.id })}
+                  >
+                    <i style={{ background: c.color }} /> {c.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="pl-modlbl">Priority</div>
+              <div className="pl-prio">
+                {PRIORITIES.map((pr) => (
+                  <button
+                    key={pr}
+                    className={(panelTask.priority || "normal") === pr ? "on" : ""}
+                    onClick={() => patch(panelTask.id, { priority: pr })}
+                  >
+                    {pr}
+                  </button>
+                ))}
+              </div>
+
+              <div className="pl-modlbl">Color</div>
+              <div className="pl-sws">
+                {PALETTE.map((p) => (
+                  <button
+                    key={p.name}
+                    className="pl-sw"
+                    style={{ background: p.bar, borderColor: panelTask.color === p.name ? "var(--ink)" : "transparent" }}
+                    onClick={() => patch(panelTask.id, { color: p.name })}
+                    aria-label={p.name}
+                  />
+                ))}
+              </div>
+
+              <div className="pl-modfoot">
+                <button className="pl-delm" onClick={() => { remove(panelTask.id); setPanelId(null); }}>
+                  Delete task
+                </button>
+                <button className="pl-btn mini" onClick={() => setPanelId(null)}>
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {!loading && (
           <div className="pl-foot">
