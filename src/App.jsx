@@ -986,7 +986,7 @@ export default function TimelinePlanner() {
                       type="number"
                       min="0"
                       step="0.5"
-                      value={targets[c.id] ?? ""}
+                      value={effTargets[c.id] ?? ""}
                       placeholder="--"
                       onChange={(e) => setTarget(c.id, e.target.value)}
                     />
