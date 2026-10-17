@@ -22,16 +22,18 @@ const PALETTE = [
 ];
 const colorOf = (n) => PALETTE.find((p) => p.name === n) || PALETTE[4];
 
-// life-area categories (drive the balance radar)
+// life-area categories (color is a PALETTE name; a task's color follows its category)
 const CATEGORIES = [
-  { id: "academic", label: "Academic", color: "#3B72D9" },
-  { id: "work", label: "Work", color: "#8257D9" },
-  { id: "health", label: "Health", color: "#3F9D57" },
-  { id: "personal", label: "Personal", color: "#DD8B29" },
-  { id: "social", label: "Social", color: "#D9509A" },
-  { id: "chores", label: "Chores", color: "#5B6472" },
+  { id: "academic", label: "Academic", color: "blue" },
+  { id: "work", label: "Work", color: "violet" },
+  { id: "health", label: "Health", color: "green" },
+  { id: "personal", label: "Personal", color: "amber" },
+  { id: "social", label: "Social", color: "pink" },
+  { id: "chores", label: "Chores", color: "slate" },
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || null;
+const NEUTRAL = { name: "neutral", bar: "#9AA1AA", tint: "#EDEEF0", ink: "#525862" };
+const taskColor = (t) => (t.category && catOf(t.category) ? colorOf(catOf(t.category).color) : NEUTRAL);
 const PRIORITIES = ["low", "normal", "high"];
 const norm = (s) => (s || "").trim().toLowerCase();
 
@@ -322,7 +324,6 @@ const STYLE = `
 /* priorities + category marker */
 .pl-block.pri-high{box-shadow:0 2px 7px rgba(0,0,0,.18);}
 .pl-block.pri-low{box-shadow:none;}
-.pl-bcat{position:absolute;bottom:3px;right:5px;width:7px;height:7px;border-radius:50%;pointer-events:none;box-shadow:0 0 0 1.5px var(--card);}
 
 /* dashboard */
 .pl-dash{display:grid;grid-template-columns:1.3fr 1fr;gap:12px;margin:16px 2px 0;}
@@ -335,6 +336,7 @@ const STYLE = `
 .pl-score{display:flex;align-items:baseline;gap:6px;}
 .pl-scorebig{font-family:'Space Grotesk',sans-serif;font-size:34px;font-weight:600;line-height:1;}
 .pl-scoreout{font-size:13px;color:var(--muted);}
+.pl-scoresub{font-size:11px;color:var(--muted);margin:3px 0 2px;line-height:1.4;}
 .pl-chead{display:grid;grid-template-columns:1fr 66px 46px 96px;gap:6px;font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:14px 0 2px;}
 .pl-chead span:not(:first-child){text-align:center;}
 .pl-crow{display:grid;grid-template-columns:1fr 66px 46px 96px;gap:6px;align-items:center;padding:5px 0;font-size:12.5px;border-top:1px solid var(--line);}
@@ -366,8 +368,6 @@ const STYLE = `
 .pl-prio{display:flex;gap:6px;}
 .pl-prio button{flex:1;font:inherit;font-size:12px;border:1px solid var(--line2);background:transparent;color:var(--ink);border-radius:7px;padding:7px 6px;cursor:pointer;text-transform:capitalize;}
 .pl-prio button.on{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 15%,transparent);font-weight:600;}
-.pl-sws{display:flex;gap:8px;flex-wrap:wrap;}
-.pl-sw{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;}
 .pl-modfoot{display:flex;justify-content:space-between;align-items:center;margin-top:18px;}
 .pl-delm{font:inherit;font-size:12.5px;color:#E8563F;background:none;border:none;cursor:pointer;}
 .pl-modal.wide{width:420px;}
@@ -440,7 +440,15 @@ export default function TimelinePlanner() {
       } catch (e) {}
       try {
         const tg = await store.get("planner:targets");
-        if (tg?.value) setTargets(JSON.parse(tg.value));
+        if (tg?.value) {
+          let parsed = JSON.parse(tg.value);
+          const catIds = CATEGORIES.map((c) => c.id);
+          // migrate old single-target format {catId:hours} -> { __default: {...} }
+          if (parsed && typeof parsed === "object" && Object.keys(parsed).some((k) => catIds.includes(k))) {
+            parsed = { __default: parsed };
+          }
+          setTargets(parsed || {});
+        }
       } catch (e) {}
       setLoading(false);
       hydrated.current = true;
@@ -470,7 +478,7 @@ export default function TimelinePlanner() {
     const top = el.getBoundingClientRect().top;
     const avail = Math.max(300, window.innerHeight - top - 18);
     setCalH(avail);
-    setHourH(clamp((avail - HEADER_ROW) / HOURS_COUNT, 26, 74));
+    setHourH(clamp((avail - HEADER_ROW) / HOURS_COUNT, 34, 74));
   };
   useLayoutEffect(() => {
     measure();
@@ -492,7 +500,7 @@ export default function TimelinePlanner() {
     const id = uid();
     setTasks((p) => [
       ...p,
-      { id, title: "", date: iso, start, duration, color: PALETTE[p.length % PALETTE.length].name, category: null, priority: "normal", done: false, createdAt: Date.now() },
+      { id, title: "", date: iso, start, duration, category: null, priority: "normal", done: false, createdAt: Date.now() },
     ]);
     setEditingId(id);
   };
@@ -520,14 +528,6 @@ export default function TimelinePlanner() {
       })
     );
   };
-  const cycleColor = (id) =>
-    setTasks((p) =>
-      p.map((t) => {
-        if (t.id !== id) return t;
-        const i = PALETTE.findIndex((c) => c.name === t.color);
-        return { ...t, color: PALETTE[(i + 1) % PALETTE.length].name };
-      })
-    );
   const remove = (id) => setTasks((p) => p.filter((t) => t.id !== id));
   const rename = (id, v) => setTasks((p) => p.map((t) => (t.id === id ? { ...t, title: v } : t)));
   const patch = (id, obj) => setTasks((p) => p.map((t) => (t.id === id ? { ...t, ...obj } : t)));
@@ -549,7 +549,13 @@ export default function TimelinePlanner() {
   const setTitleCat = (id, v) =>
     setTasks((p) => p.map((t) => (t.id === id ? { ...t, title: v, category: t.category || catMap[norm(v)] || null } : t)));
   const setTarget = (catId, v) =>
-    setTargets((m) => { const n = { ...m }; if (v === "" || v == null) delete n[catId]; else n[catId] = Number(v); return n; });
+    setTargets((m) => {
+      const base = m[wk0] || effTargets;
+      const wk = { ...base };
+      if (v === "" || v == null) delete wk[catId];
+      else wk[catId] = Number(v);
+      return { ...m, [wk0]: wk };
+    });
   const setPlannedHours = (id, h) => {
     const t = tasks.find((x) => x.id === id);
     if (!t) return;
@@ -655,11 +661,17 @@ export default function TimelinePlanner() {
   const bestStreak = habits
     .map((h) => ({ name: h.name, s: streakOf(h.log) }))
     .reduce((a, b) => (b.s > a.s ? b : a), { name: "", s: 0 });
+  const wk0 = wd[0];
+  const priorTargetKeys = Object.keys(targets)
+    .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k) && k < wk0)
+    .sort();
+  const effTargets =
+    targets[wk0] || (priorTargetKeys.length ? targets[priorTargetKeys[priorTargetKeys.length - 1]] : null) || targets.__default || {};
   const catStats = CATEGORIES.map((c) => {
     const inWeek = tasks.filter((t) => wd.includes(t.date) && t.category === c.id);
     const doneMin = inWeek.reduce((s, t) => s + (t.actualMin != null ? t.actualMin : t.done ? t.duration || 60 : 0), 0);
     const plannedMin = inWeek.reduce((s, t) => s + (t.duration || 60), 0);
-    const target = Number(targets[c.id]) || 0;
+    const target = Number(effTargets[c.id]) || 0;
     const doneH = doneMin / 60;
     const plannedH = plannedMin / 60;
     const score = target > 0 ? Math.min(10, (doneH / target) * 10) : null;
@@ -860,14 +872,13 @@ export default function TimelinePlanner() {
                       <div className="pl-nowline" style={{ top: (nowMin - DAY_START) * PX }} />
                     )}
                     {dayTasks.map((t) => {
-                      const col = colorOf(t.color);
+                      const col = taskColor(t);
                       const lg = lay[t.id] || { col: 0, total: 1 };
                       const w = 100 / lg.total;
                       const isDragging = drag && drag.id === t.id;
                       const top = (t.start - DAY_START) * PX;
-                      const height = Math.max((t.duration || 60) * PX, 20);
+                      const height = Math.max((t.duration || 60) * PX, 11);
                       const prio = t.priority || "normal";
-                      const cat = t.category ? catOf(t.category) : null;
                       const bdark = theme === "dark";
                       return (
                         <div
@@ -937,7 +948,6 @@ export default function TimelinePlanner() {
                               <Trash2 size={11} />
                             </button>
                           </div>
-                          {cat && <span className="pl-bcat" style={{ background: cat.color }} title={cat.label} />}
                           <div className="pl-resize" data-resize aria-label="Resize" />
                         </div>
                       );
@@ -958,6 +968,7 @@ export default function TimelinePlanner() {
                 <span className="pl-scorebig">{overall != null ? overall.toFixed(1) : "--"}</span>
                 <span className="pl-scoreout">/ 10</span>
               </div>
+              <div className="pl-scoresub">Targets are per week and carry over until you change them.</div>
               <div className="pl-chead">
                 <span>Life area</span>
                 <span>Target</span>
@@ -967,7 +978,7 @@ export default function TimelinePlanner() {
               {catStats.map((c) => (
                 <div key={c.id} className="pl-crow">
                   <span className="pl-cname">
-                    <i style={{ background: c.color }} />
+                    <i style={{ background: colorOf(c.color).bar }} />
                     {c.label}
                   </span>
                   <span className="pl-ctin">
@@ -985,7 +996,7 @@ export default function TimelinePlanner() {
                   <span className="pl-cscorewrap">
                     <span className="pl-cscore">{c.score != null ? c.score.toFixed(1) : "--"}</span>
                     <span className="pl-cbar">
-                      <span style={{ width: `${(c.score || 0) * 10}%`, background: c.color }} />
+                      <span style={{ width: `${(c.score || 0) * 10}%`, background: colorOf(c.color).bar }} />
                     </span>
                   </span>
                 </div>
@@ -1107,7 +1118,7 @@ export default function TimelinePlanner() {
                     className={`pl-chip${panelTask.category === c.id ? " on" : ""}`}
                     onClick={() => assignCategory(panelTask.id, c.id)}
                   >
-                    <i style={{ background: c.color }} /> {c.label}
+                    <i style={{ background: colorOf(c.color).bar }} /> {c.label}
                   </button>
                 ))}
               </div>
@@ -1122,19 +1133,6 @@ export default function TimelinePlanner() {
                   >
                     {pr}
                   </button>
-                ))}
-              </div>
-
-              <div className="pl-modlbl">Color</div>
-              <div className="pl-sws">
-                {PALETTE.map((p) => (
-                  <button
-                    key={p.name}
-                    className="pl-sw"
-                    style={{ background: p.bar, borderColor: panelTask.color === p.name ? "var(--ink)" : "transparent" }}
-                    onClick={() => patch(panelTask.id, { color: p.name })}
-                    aria-label={p.name}
-                  />
                 ))}
               </div>
 
@@ -1196,7 +1194,7 @@ export default function TimelinePlanner() {
               <div className="pl-rolllist">
                 {rollCands.length === 0 && <div className="pl-emptynote">Nothing to roll over {"\u2014"} you're all caught up.</div>}
                 {rollCands.map((t) => {
-                  const col = colorOf(t.color);
+                  const col = taskColor(t);
                   const n = Math.round((parseLocal(todayIso) - parseLocal(t.date)) / 86400000);
                   const older = t.date < recentCutoff;
                   const sel = rollSel.has(t.id);
